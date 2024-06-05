@@ -1,0 +1,8 @@
+homepage: "https://agada.tech"
+documentation: "https://docs.agada.io"
+versions:
+  - sha: d2fb6f56b8c12cae0a5a3ebbe049cabefa3827dd
+    changeNotes: |
+      Initial release.
+      Add basic functionalities.
+      Provide comprehensive documentation.
