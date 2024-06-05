@@ -1,4 +1,4 @@
-﻿___TERMS_OF_SERVICE___
+___TERMS_OF_SERVICE___
 
 By creating or modifying this file you agree to Google Tag Manager's Community
 Template Gallery Developer Terms of Service available at
@@ -31,8 +31,8 @@ ___TEMPLATE_PARAMETERS___
 [
   {
     "type": "TEXT",
-    "name": "agadaApiKey",
-    "displayName": "Agada Api Key",
+    "name": "apiKey",
+    "displayName": "API Key",
     "simpleValueType": true
   }
 ]
@@ -40,9 +40,8 @@ ___TEMPLATE_PARAMETERS___
 
 ___SANDBOXED_JS_FOR_WEB_TEMPLATE___
 
-// Gerekli API'leri yükleyin
+const log = require('logToConsole');
 const queryPermission = require('queryPermission');
-const createQueue = require('createQueue');
 const copyFromDataLayer = require('copyFromDataLayer');
 const sendPixel = require('sendPixel');
 const getTimestamp = require('getTimestamp');
@@ -50,57 +49,30 @@ const JSON = require('JSON');
 const Object = require('Object');
 const encodeUriComponent = require('encodeUriComponent');
 
+if (queryPermission('read_data_layer', 'dataLayer')) {
+  if (!data.event) return;
 
-// dataLayer için izinleri kontrol edin
-if (queryPermission('dataLayer')) {
-  var dataLayerPush = createQueue('dataLayer');
+  var userId = copyFromDataLayer('userId') || 'anonymUser';
+  var event = copyFromDataLayer('event'); 
+  var metadata = copyFromDataLayer('metadata') || {}; 
 
-  // Zaman damgası ekleyin
-  var eventTimestamp = getTimestamp();
+  var queryString = Object.entries(metadata).map(function(entry) {
+    var key = encodeUriComponent(entry[0]);
+    var value = encodeUriComponent(entry[1]);
+    return key + '=' + value;
+  }).join('&');
 
-  var endPoint = data.endPoint;
-  var batchHits = data.batchHits === 'yes';
-  var maxTags = data.maxTags;
+  if (queryString) {
+    queryString = '&' + queryString;
+  }
 
-  // Bir diziyi verilen boyuttaki çoklu dizilere ayırma aracı
-  var splitToBatches = function(arr, size) {
-    var newArr = [];
-    for (var i = 0, len = arr.length; i < len; i += size) {
-      newArr.push(arr.slice(i, i + size));
-    }
-    return newArr;
-  };
+    var pixelUrl = 'https://pixel.agada.io/?userId=' + encodeUriComponent(userId) +
+                   '&event=' + encodeUriComponent(event) + queryString +
+                   '&apiKey=' + encodeUriComponent(data.apiKey);
 
-  // copyFromDataLayer ile metadata öğelerini işleyin
-  var processDataLayer = function() {
-    var userId = copyFromDataLayer('userId') || 'anonymUser'; // Varsayılan değer kullan
-    var event = copyFromDataLayer('event') || 'defaultEvent'; // Varsayılan değer kullan
-    var metadata = copyFromDataLayer('metadata') || {}; // Tüm metadata bilgilerini al
-    var apiKey = data.agadaApiKey;
 
-    // Metadata'yı query string formatına çevir
-    var queryString = Object.entries(metadata).map(function(entry) {
-      var key = encodeUriComponent(entry[0]);
-      var value = encodeUriComponent(entry[1]);
-      return key + '=' + value;
-    }).join('&');
-
-    // Pixel URL'sini oluştur
-    var pixelUrl = 'https://pixel.agada.io/?userId=' + encodeUriComponent(userId) + 
-                   '&event=' + encodeUriComponent(event) + '&' + queryString + 
-                   '&apiKey=' + encodeUriComponent(apiKey);
-
-    // Pixel'i gönder
-    sendPixel(pixelUrl);
-  };
-
-  // Başlangıçta ve her dataLayer.push çağrısında processDataLayer fonksiyonunu çağırın
-  processDataLayer();
-  dataLayerPush.add(processDataLayer);
+    sendPixel(pixelUrl, data.gtmOnSuccess, data.gtmOnFailure);
 }
-
-// Callback eklendikten sonra, etiket tamamlandığını sinyal verin
-data.gtmOnSuccess();
 
 
 ___WEB_PERMISSIONS___
@@ -109,10 +81,21 @@ ___WEB_PERMISSIONS___
   {
     "instance": {
       "key": {
-        "publicId": "access_globals",
+        "publicId": "logging",
         "versionId": "1"
       },
-      "param": []
+      "param": [
+        {
+          "key": "environments",
+          "value": {
+            "type": 1,
+            "string": "all"
+          }
+        }
+      ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
     },
     "isRequired": true
   },
@@ -127,10 +110,13 @@ ___WEB_PERMISSIONS___
           "key": "allowedKeys",
           "value": {
             "type": 1,
-            "string": "specific"
+            "string": "any"
           }
         }
       ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
     },
     "isRequired": true
   },
@@ -145,10 +131,13 @@ ___WEB_PERMISSIONS___
           "key": "allowedUrls",
           "value": {
             "type": 1,
-            "string": "specific"
+            "string": "any"
           }
         }
       ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
     },
     "isRequired": true
   }
@@ -157,7 +146,49 @@ ___WEB_PERMISSIONS___
 
 ___TESTS___
 
-scenarios: []
+scenarios:
+- name: test
+  code: |-
+    const apiKey = data.apiKey; // Use the API key from mockData
+
+    const mockData = {
+      event: "event_name",
+      metadata: {
+        gender: "male"
+      },
+      apiKey: 'API_KEY'
+    };
+
+    // Mock sendPixel function to capture the URL it is called with
+    var triggerUrl;
+
+    mock('sendPixel', function(url, onSuccess, onFailure) {
+      triggerUrl = url;
+
+      if (onSuccess != null) {
+        onSuccess();
+      }
+    });
+
+    // Call runCode to run the template's code
+    runCode(mockData);
+
+    // Verify that the tag finished successfully
+    assertThat(assertApi('gtmOnSuccess').wasCalled());
+
+    // Verify that sendPixel API was called
+    assertThat(assertApi('sendPixel').wasCalled());
+
+    // Define userId and apiKey for expected URL
+    const userId = "anonymUser";
+
+
+    // Define expected URL
+    const expectedServerUrl = 'https://pixel.agada.io/?userId=' + userId + '&event=event_name&gender=male&apiKey=' + mockData.apiKey;
+
+    // Verify that the URL was correctly fired
+    assertThat(triggerUrl).isEqualTo(expectedServerUrl);
+setup: ''
 
 
 ___NOTES___
